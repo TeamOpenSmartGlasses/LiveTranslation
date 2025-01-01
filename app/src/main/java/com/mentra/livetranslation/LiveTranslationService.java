@@ -12,6 +12,9 @@ import com.huaban.analysis.jieba.SegToken;
 import com.teamopensmartglasses.augmentoslib.AugmentOSLib;
 import com.teamopensmartglasses.augmentoslib.DataStreamType;
 import com.teamopensmartglasses.augmentoslib.SmartGlassesAndroidService;
+import com.teamopensmartglasses.augmentoslib.TranscriptProcessor;
+import com.teamopensmartglasses.augmentoslib.events.StartAsrStreamRequestEvent;
+import com.teamopensmartglasses.augmentoslib.events.StopAsrStreamRequestEvent;
 import com.teamopensmartglasses.augmentoslib.events.TranslateOutputEvent;
 
 import net.sourceforge.pinyin4j.PinyinHelper;
@@ -55,9 +58,9 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
     private String lastTranslateLanguage = null;
     private final int maxNormalTextCharsPerTranscript = 30;
     private final int maxCharsPerHanziTranscript = 12;
-
-    private final TranscriptProcessor normalTextTranscriptProcessor = new TranscriptProcessor(maxNormalTextCharsPerTranscript);
-    private final TranscriptProcessor hanziTextTranscriptProcessor = new TranscriptProcessor(maxCharsPerHanziTranscript);
+    private final int maxLines = 3;
+    private final TranscriptProcessor normalTextTranscriptProcessor = new TranscriptProcessor(maxNormalTextCharsPerTranscript, maxLines);
+    private final TranscriptProcessor hanziTextTranscriptProcessor = new TranscriptProcessor(maxCharsPerHanziTranscript, maxLines);
     private final Handler callTimeoutHandler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
     public LiveTranslationService() {
@@ -93,11 +96,26 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
         //make responses holder
         transcriptsBuffer = new ArrayList<>();
 
+//        requestTranslation();
+
         Log.d(TAG, "Convoscope service started");
-
-
         completeInitialization();
 
+    }
+
+    private void requestTranslation() {
+        String transcriptionLanguage = getChosenTranscribeLanguage(this);
+        String translationLanguage = getChosenSourceLanguage(this);
+        stopTranslation();
+        new Handler().postDelayed(() -> {
+            augmentOSLib.subscribe(new StartAsrStreamRequestEvent(transcriptionLanguage, translationLanguage));
+        }, 500);
+    }
+
+    private void stopTranslation() {
+        String transcriptionLanguage = getChosenTranscribeLanguage(this);
+        String translationLanguage = getChosenSourceLanguage(this);
+        augmentOSLib.subscribe(new StopAsrStreamRequestEvent(transcriptionLanguage, translationLanguage));
     }
 
     protected void setupEventBusSubscribers() {
@@ -122,13 +140,14 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
         Log.d(TAG, "COMPLETE CONVOSCOPE INITIALIZATION");
 
         displayQueue.startQueue();
+//        augmentOSLib.subscribe(DataStreamType.START_TRANSLATION_STREAM, this::processTranscriptionCallback);
     }
 
     @Override
     public void onDestroy(){
         Log.d(TAG, "onDestroy: Called");
         Log.d(TAG, "Deinit augmentOSLib");
-        augmentOSLib.subscribe(DataStreamType.KILL_TRANSLATION_STREAM, this::processTranscriptionCallback);
+//        augmentOSLib.subscribe(DataStreamType.KILL_TRANSLATION_STREAM, this::processTranscriptionCallback);
 
         augmentOSLib.deinit();
         Log.d(TAG, "csePoll handler remove");
@@ -142,6 +161,7 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
 
         if (displayQueue != null) displayQueue.stopQueue();
 
+        stopTranslation();
         Log.d(TAG, "ran onDestroy");
         super.onDestroy();
     }
@@ -339,54 +359,10 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
                 if (lastTranscribeLanguage == null || !lastTranscribeLanguage.equals(currentTranscribeLanguage)) {
                     lastTranscribeLanguage = currentTranscribeLanguage;
 
-                    switch (currentTranscribeLanguage) {
-                        case "Default":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_DEFAULT_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "English":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_ENGLISH_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Chinese":
-                        case "Chinese (Pinyin)":
-                        case "Chinese (Hanzi)":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_CHINESE_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Russian":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_RUSSIAN_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "French":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_FRENCH_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Spanish":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_SPANISH_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "German":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_GERMAN_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Arabic":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_ARABIC_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Korean":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_KOREAN_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Italian":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_ITALIAN_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Turkish":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_TURKISH_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Portuguese":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_PORTUGUESE_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        case "Dutch":
-                            augmentOSLib.subscribe(DataStreamType.TRANSCRIPTION_DUTCH_STREAM, LiveTranslationService.this::processTranscriptionCallback);
-                            break;
-                        default:
-                            Log.d(TAG, "UNKNOWN TRANSCRIBE LANGUAGE: " + currentTranscribeLanguage);
-                            break;
+                    if (lastTranscribeLanguage != null) {
+//                        requestTranslation();
+                        finalTranslationText = "";
                     }
-
-                    finalTranslationText = "";
                 }
 
                 // Schedule the next check
@@ -405,52 +381,7 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
                 if (lastTranslateLanguage == null || !lastTranslateLanguage.equals(currentTranslateLanguage)) {
                     lastTranslateLanguage = currentTranslateLanguage;
 
-                    Log.d(TAG, "Subscribing to translation stream");
-
-                    // Subscribe to the appropriate translation stream
-                    switch (currentTranslateLanguage) {
-                        case "English":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_ENGLISH_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Chinese":
-                        case "Chinese (Pinyin)":
-                        case "Chinese (Hanzi)":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_CHINESE_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Russian":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_RUSSIAN_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "French":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_FRENCH_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Spanish":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_SPANISH_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "German":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_GERMAN_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Arabic":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_ARABIC_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Korean":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_KOREAN_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Italian":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_ITALIAN_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Turkish":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_TURKISH_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Portuguese":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_PORTUGUESE_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        case "Dutch":
-                            augmentOSLib.subscribe(DataStreamType.TRANSLATION_DUTCH_STREAM, LiveTranslationService.this::processTranslationCallback);
-                            break;
-                        default:
-                            Log.d(TAG, "UNKNOWN TRANSLATE LANGUAGE: " + currentTranslateLanguage);
-                            break;
-                    }
+                    requestTranslation();
                     finalTranslationText = "";
                 }
 
@@ -458,144 +389,5 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
                 translateLanguageCheckHandler.postDelayed(this, 333); // Approximately 3 times a second
             }
         }, 0);
-    }
-
-
-    public static class TranscriptProcessor {
-
-        private final int maxCharsPerLine;
-        private final int maxLines = 4;
-
-        private Deque<String> lines;
-
-        private String partialText;
-
-        public TranscriptProcessor(int maxCharsPerLine) {
-            this.maxCharsPerLine = maxCharsPerLine;
-            this.lines = new ArrayDeque<>();
-            this.partialText = "";
-        }
-
-        public String processString(String newText, boolean isFinal) {
-            newText = (newText == null) ? "" : newText.trim();
-
-            if (!isFinal) {
-                // Store this as the current partial text (overwriting old partial)
-                partialText = newText;
-                return buildPreview(partialText);
-            } else {
-                // We have a final text -> clear out the partial text to avoid duplication
-                partialText = "";
-
-                // Wrap this final text
-                List<String> wrapped = wrapText(newText, maxCharsPerLine);
-                for (String chunk : wrapped) {
-                    appendToLines(chunk);
-                }
-
-                // Return only the finalized lines
-                return getTranscript();
-            }
-        }
-
-        private String buildPreview(String partial) {
-            // Wrap the partial text
-            List<String> partialChunks = wrapText(partial, maxCharsPerLine);
-
-            // Combine with finalized lines
-            List<String> combined = new ArrayList<>(lines);
-            combined.addAll(partialChunks);
-
-            // Truncate if necessary
-            if (combined.size() > maxLines) {
-                combined = combined.subList(combined.size() - maxLines, combined.size());
-            }
-
-            // Add padding to ensure exactly maxLines are displayed
-            int linesToPad = maxLines - combined.size();
-            for (int i = 0; i < linesToPad; i++) {
-                combined.add(""); // Add empty lines at the end
-            }
-
-            return String.join("\n", combined);
-        }
-
-        private void appendToLines(String chunk) {
-            if (lines.isEmpty()) {
-                lines.addLast(chunk);
-            } else {
-                String lastLine = lines.removeLast();
-                String candidate = lastLine.isEmpty() ? chunk : lastLine + " " + chunk;
-
-                if (candidate.length() <= maxCharsPerLine) {
-                    lines.addLast(candidate);
-                } else {
-                    // Put back the last line if it doesn't fit
-                    lines.addLast(lastLine);
-                    lines.addLast(chunk);
-                }
-            }
-
-            // Ensure we don't exceed maxLines
-            while (lines.size() > maxLines) {
-                lines.removeFirst();
-            }
-        }
-
-        private List<String> wrapText(String text, int maxLineLength) {
-            List<String> result = new ArrayList<>();
-            while (!text.isEmpty()) {
-                if (text.length() <= maxLineLength) {
-                    result.add(text);
-                    break;
-                } else {
-                    int splitIndex = maxLineLength;
-                    // move splitIndex left until we find a space
-                    while (splitIndex > 0 && text.charAt(splitIndex) != ' ') {
-                        splitIndex--;
-                    }
-                    // If we didn't find a space, force split
-                    if (splitIndex == 0) {
-                        splitIndex = maxLineLength;
-                    }
-
-                    String chunk = text.substring(0, splitIndex).trim();
-                    result.add(chunk);
-                    text = text.substring(splitIndex).trim();
-                }
-            }
-            return result;
-        }
-
-        public String getTranscript() {
-            // Create a copy of the lines for manipulation
-            List<String> allLines = new ArrayList<>(lines);
-
-            // Add padding to ensure exactly maxLines are displayed
-            int linesToPad = maxLines - allLines.size();
-            for (int i = 0; i < linesToPad; i++) {
-                allLines.add(""); // Add empty lines at the end
-            }
-
-            String finalString = String.join("\n", allLines);
-
-            lines.clear();
-
-            return finalString;
-        }
-
-
-        public void clear() {
-            lines.clear();
-            partialText = "";
-        }
-
-        public int getMaxCharsPerLine() {
-            return maxCharsPerLine;
-        }
-
-        public int getMaxLines() {
-            return maxLines;
-        }
     }
 }
