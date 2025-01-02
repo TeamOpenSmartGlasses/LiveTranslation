@@ -106,16 +106,11 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
     private void requestTranslation() {
         String transcriptionLanguage = getChosenTranscribeLanguage(this);
         String translationLanguage = getChosenSourceLanguage(this);
-        stopTranslation();
-        new Handler().postDelayed(() -> {
-            augmentOSLib.subscribe(new StartAsrStreamRequestEvent(transcriptionLanguage, translationLanguage));
-        }, 500);
+        augmentOSLib.subscribe(new StartAsrStreamRequestEvent(transcriptionLanguage, translationLanguage));
     }
 
     private void stopTranslation() {
-        String transcriptionLanguage = getChosenTranscribeLanguage(this);
-        String translationLanguage = getChosenSourceLanguage(this);
-        augmentOSLib.subscribe(new StopAsrStreamRequestEvent(transcriptionLanguage, translationLanguage));
+        augmentOSLib.subscribe(new StopAsrStreamRequestEvent());
     }
 
     protected void setupEventBusSubscribers() {
@@ -357,18 +352,18 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
 
                 // If the language has changed or this is the first call
                 if (lastTranscribeLanguage == null || !lastTranscribeLanguage.equals(currentTranscribeLanguage)) {
-                    lastTranscribeLanguage = currentTranscribeLanguage;
-
                     if (lastTranscribeLanguage != null) {
-//                        requestTranslation();
+                        requestTranslation();
                         finalTranslationText = "";
                     }
+
+                    lastTranscribeLanguage = currentTranscribeLanguage;
                 }
 
                 // Schedule the next check
                 transcribeLanguageCheckHandler.postDelayed(this, 333); // Approximately 3 times a second
             }
-        }, 0);
+        }, 50);
     }
 
     private void startTranslateLanguageCheckTask() {
@@ -379,15 +374,17 @@ public class LiveTranslationService extends SmartGlassesAndroidService {
 
                 // If the language has changed or this is the first call
                 if (lastTranslateLanguage == null || !lastTranslateLanguage.equals(currentTranslateLanguage)) {
-                    lastTranslateLanguage = currentTranslateLanguage;
+                    if (lastTranscribeLanguage != null) {
+                        requestTranslation();
+                        finalTranslationText = "";
+                    }
 
-                    requestTranslation();
-                    finalTranslationText = "";
+                    lastTranslateLanguage = currentTranslateLanguage;
                 }
 
                 // Schedule the next check
                 translateLanguageCheckHandler.postDelayed(this, 333); // Approximately 3 times a second
             }
-        }, 0);
+        }, 50);
     }
 }
